@@ -1,0 +1,72 @@
+name: Build BOB AI APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android packages
+        run: |
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Extract BOB AI archive
+        run: |
+          mkdir -p extracted
+          ARCHIVE=$(find . -maxdepth 1 \
+            -iname 'BOB-AI-Android-Studio*.zip' | head -n 1)
+
+          if [ -z "$ARCHIVE" ]; then
+            echo "BOB AI archive not found!"
+            exit 1
+          fi
+
+          unzip -o "$ARCHIVE" -d extracted
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Verify project
+        run: |
+          PROJECT_DIR=$(dirname "$(find extracted \
+            -name settings.gradle.kts -print -quit)")
+
+          if [ -z "$PROJECT_DIR" ] || \
+             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "Android project not found!"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build BOB AI APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOB-AI-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
